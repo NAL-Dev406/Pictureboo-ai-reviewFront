@@ -15,11 +15,13 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* 统一背景色与学术感字体 */
+    /* 统一背景色 */
     .stApp {
         background-color: #f8f9fa;
     }
-    h1, h2, h3, p, span, div {
+    
+    /* 精准覆盖文字字体，放过底层框架的 div 和 span */
+    .stApp, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp p, .stApp li, .stApp label, .stMarkdownContainer {
         font-family: 'Georgia', 'Times New Roman', serif !important;
     }
     </style>
