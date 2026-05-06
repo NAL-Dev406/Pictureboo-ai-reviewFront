@@ -30,8 +30,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 获取环境变量 (Streamlit Cloud Secrets)
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "您的SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "您的SUPABASE_KEY")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://hwprweoyqvkwlbqffngh.supabase.co")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cHJ3ZW95cXZrd2xicWZmbmdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MDY5ODQsImV4cCI6MjA5MDQ4Mjk4NH0.zLr6zdJALR8p2xmjtueENFsGUtEpginY_vsYMUgM2us")
 API_BASE_URL = "https://pb-api.nal-ai.org" # 后端 API 地址
 
 # 初始化 Supabase 客户端
