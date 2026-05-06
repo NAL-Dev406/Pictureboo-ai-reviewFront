@@ -36,10 +36,22 @@ st.markdown("""
 # 2. 环境变量获取与安全校验 (核心改进)
 # ==========================================
 # 🚨 警告：切勿在此处写死真实的密钥！请确保在 Render 的 Environment 标签页中配置了它们。
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://pb-api.nal-ai.org")
+# --- 修改后的全兼容获取方式 ---
+def get_config(key, default=""):
+    # 1. 首先尝试从标准环境变量读取 (适配 Render)
+    value = os.environ.get(key)
+    if value:
+        return value
+    
+    # 2. 其次尝试从 Streamlit Secrets 读取 (适配 Streamlit Cloud / 本地 .streamlit/secrets.toml)
+    try:
+        return st.secrets.get(key, default)
+    except:
+        return default
 
+SUPABASE_URL = get_config("SUPABASE_URL")
+SUPABASE_KEY = get_config("SUPABASE_KEY")
+API_BASE_URL = get_config("API_BASE_URL", "https://pb-api.nal-ai.org")
 # 平台自检：如果环境变量未注入，拦截运行并报错，防止发生意料之外的崩溃
 if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("⚠️ 系统环境未就绪：缺少数据库或存储桶连接凭证。请联系 NAL 平台管理员在后台注入环境变量。")
