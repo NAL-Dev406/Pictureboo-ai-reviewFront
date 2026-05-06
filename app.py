@@ -1,17 +1,15 @@
 import streamlit as st
 import requests
 import time
-import base64
 import os
-from io import BytesIO
-from PIL import Image
 from supabase import create_client, Client
 
-# --- 1. 配置与环境初始化 ---
-# 保持原有的 set_page_config 不变
+# ==========================================
+# 1. 配置与环境初始化 (UI 注入与风格统一)
+# ==========================================
 st.set_page_config(page_title="NAL | 视觉叙事深度评审引擎", page_icon="🏛️", layout="wide")
 
-# 注入 CSS 以确保风格与 nal-ai.org 高度统一 (新增内容)
+# 注入 CSS 以确保风格与 nal-ai.org 高度统一
 st.markdown("""
     <style>
     /* 隐藏 Streamlit 默认页眉页脚，提升专业感 */
@@ -20,207 +18,170 @@ st.markdown("""
     header {visibility: hidden;}
     
     /* 统一背景色与学术感字体 */
-    .stApp {
-        background-color: #f8f9fa;
-    }
+    .stApp { background-color: #f8f9fa; }
     h1, h2, h3, p, span, div {
         font-family: 'Georgia', 'Times New Roman', serif !important;
     }
-    /* 这里的样式确保了界面与主站风格一致 */
+    
+    /* 优化报告边框的呈现效果 */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 8px;
+        background-color: #ffffff;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# 获取环境变量 (替换掉 st.secrets)
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://hwprweoyqvkwlbqffngh.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cHJ3ZW95cXZrd2xicWZmbmdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MDY5ODQsImV4cCI6MjA5MDQ4Mjk4NH0.zLr6zdJALR8p2xmjtueENFsGUtEpginY_vsYMUgM2us")
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://pb-api.nal-ai.org") # 同样推荐用 os.environ 包裹一下
+# ==========================================
+# 2. 环境变量获取与安全校验 (核心改进)
+# ==========================================
+# 🚨 警告：切勿在此处写死真实的密钥！请确保在 Render 的 Environment 标签页中配置了它们。
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://pb-api.nal-ai.org")
+
+# 平台自检：如果环境变量未注入，拦截运行并报错，防止发生意料之外的崩溃
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("⚠️ 系统环境未就绪：缺少数据库或存储桶连接凭证。请联系 NAL 平台管理员在后台注入环境变量。")
+    st.stop()
 
 # 初始化 Supabase 客户端
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- 2. 核心函数：上传素材至存储桶 ---
-def upload_images_to_nal_storage(files):
-    """
-    将上传的文件推送到 Supabase 'nal_images' 存储桶并返回公开 URL
-    """
-    public_urls = []
-    for file in files:
-        try:
-            # 保持原有的路径生成逻辑
-            file_path = f"review_images/{int(time.time())}_{file.name}"
-            file_content = file.getvalue()
-            
-            # 上传到公共存储桶
-            supabase.storage.from_("nal_images").upload(
-                path=file_path,
-                file=file_content,
-                file_options={"content-type": file.type}
-            )
-            
-            # 获取允许外部访问的公网链接
-            url_res = supabase.storage.from_("nal_images").get_public_url(file_path)
-            public_urls.append(url_res)
-        except Exception as e:
-            st.error(f"⚠️ 文件 {file.name} 上传失败: {e}")
-    return public_urls
+# ==========================================
+# 3. 页面头部与信息区
+# ==========================================
+st.title("🏛️ NAL 视觉协同评审引擎")
+st.markdown("欢迎来到 **NewArtLiterature Collective** 数字化中枢。请上传您的视觉叙事素材，v65 引擎将结合您的创作意图，提供多维度的学术级评审。")
 
-# --- 3. 侧边栏：学术参数配置 ---
-# 保持原有的标题与侧边栏逻辑
-st.title("🏛️ NewArtLiterature Collective")
-st.subheader("绘本与插画视觉叙事协同评审")
-
-with st.sidebar:
-    st.header("评审参数配置")
-    work_type = st.selectbox("作品形态", ["绘本 (Picture Book)", "插画 (Illustration)"])
-    st.divider()
+# ==========================================
+# 4. 交互表单区
+# ==========================================
+with st.form("nal_evaluation_form"):
+    user_intent = st.text_area(
+        "📝 创作意图 / 核心表达 (选填)", 
+        placeholder="请简述您在画面中试图传达的情感、故事背景或艺术设定...",
+        height=100
+    )
     
-    st.markdown("**NAL 评估模型 (基于创作意图)：**")
-    if "绘本" in work_type:
-        st.caption("🔍 **焦点：** 跨页节奏、图文协同度、文字留白处的视觉补偿。")
-    else:
-        st.caption("🔍 **焦点：** 单幅画面对创作意图的精准传达、构图隐喻、避免无意义的视觉炫技。")
-        
-    st.divider()
-    st.markdown("""
-    **4:3:3 权重分布：**
-    - 视觉对撞 (40%)
-    - 创意维度 (30%)
-    - 叙事平衡/意图契合 (30%)
-    """)
-    st.caption("当前引擎: v2.1.0-NAL-Synergy")
-    st.info("💡 建议：上传素材前请确保已完成‘创作意图’的文本沉淀。") # 新增提示
-
-# --- 4. 主界面：动态输入区 ---
-st.write(f"### 📝 第一步：确立叙事内核与意图")
-
-script_placeholder = "请输入完整的绘本文字脚本，以便分析图文节奏..." if "绘本" in work_type else "请输入这幅插画的创作意图、配文或背景设定，以便分析图像表达是否精准..."
-script_text = st.text_area(
-    "文本脚本 / 创作意图 (v5 分析锚点)", 
-    height=150, 
-    placeholder=script_placeholder
-)
-
-st.write(f"### 🖼️ 第二步：上传 {work_type} 视觉素材")
-uploaded_files = st.file_uploader(
-    "支持上传 JPG, PNG 格式 (绘本建议上传连续跨页，插画建议上传高清原图)", 
-    accept_multiple_files=True
-)
-
-# 新增：上传素材后的即时预览区，提升用户体验
-if uploaded_files:
-    with st.expander("👀 待评审素材预览", expanded=False):
-        cols = st.columns(4)
-        for idx, file in enumerate(uploaded_files):
-            cols[idx % 4].image(file, use_container_width=True)
-
-# --- 5. 提交与轮询逻辑 ---
-if st.button("🚀 提交 NAL 学术评审", type="primary"):
+    uploaded_file = st.file_uploader(
+        "🖼️ 上传视觉素材 (支持 JPG, PNG)", 
+        type=["jpg", "jpeg", "png"]
+    )
     
-    if not script_text.strip():
-        st.warning("⚠️ 请输入文本脚本或创作意图。在 NAL 评估体系中，理解作者意图是评判视觉表现力的前提。")
-        st.stop()
-        
-    if not uploaded_files:
-        st.warning("⚠️ 请至少上传一张视觉素材以供分析。")
-        st.stop()
-        
-    # 执行上传
-    with st.spinner("📦 正在建立视觉素材与叙事文本的云端映射..."):
-        image_urls = upload_images_to_nal_storage(uploaded_files)
-    
-    if not image_urls:
-        st.error("素材同步失败，请检查 Supabase 存储桶配置。")
+    submit_button = st.form_submit_button("🚀 提交 NAL 学术评审", use_container_width=True)
+
+# ==========================================
+# 5. 核心处理逻辑区 (上传与 API 协同)
+# ==========================================
+if submit_button:
+    if not uploaded_file:
+        st.warning("⚠️ 请先上传一张视觉素材。")
     else:
         try:
-            # 向后端发起双轨评审请求
-            with st.spinner("📡 正在唤醒后台 v65 视觉协同引擎..."):
-                payload = {
-                    "work_type": "picture_book" if "绘本" in work_type else "illustration",
-                    "script_text": script_text,
-                    "image_urls": image_urls
-                }
-                # 增加对 pb-api 的连接校验
-                resp = requests.post(f"{API_BASE_URL}/PB/api/evaluate", json=payload, timeout=20)
+            # --- A. 上传图片到 Supabase 存储桶 ---
+            file_bytes = uploaded_file.getvalue()
+            file_ext = uploaded_file.name.split(".")[-1]
+            file_name = f"review_{int(time.time())}.{file_ext}"
+            
+            # 执行上传 (假设你的 bucket 名字叫 images，请根据实际情况修改)
+            bucket_name = "images" 
+            res = supabase.storage.from_(bucket_name).upload(file_name, file_bytes)
+            
+            # 获取图片公开访问链接
+            public_url = supabase.storage.from_(bucket_name).get_public_url(file_name)
+            
+            # --- B. 组装发给后端的 Payload ---
+            payload = {
+                "image_url": public_url,
+                "intent": user_intent
+            }
+            
+            st.success("✅ 素材已加密上传至 NAL 云端，正在唤醒 v65 评审引擎...")
+            
+            # UI 占位符：进度条与状态提示
+            progress_bar = st.progress(0)
+            status_area = st.empty()
+            start_time = time.time()
+            quotes = [
+                "正在解析画面构图与色彩张力...",
+                "正在将视觉元素与您的创作意图进行对齐...",
+                "正在调用 4:3:3 权重评价体系...",
+                "正在撰写学术级评审报告，请稍候..."
+            ]
+            
+            # --- C. 发起后端评审请求 ---
+            resp = requests.post(f"{API_BASE_URL}/PB/api/evaluate", json=payload, timeout=30)
             
             if resp.status_code == 200:
-                row_id = resp.json().get("row_id")
-                st.toast(f"✅ NAL 评审立项成功！档案 ID: {row_id}", icon="🤖")
+                resp_data = resp.json()
+                row_id = resp_data.get("row_id") # 假设后端立即返回任务 ID
                 
-                status_area = st.empty()
-                progress_bar = st.progress(0)
-                start_time = time.time()
-                
-                quotes = [
-                    "正在锚定文本意图与视觉表现的基准线...",
-                    "正在解析色彩张力与构图的叙事性...",
-                    "正在评估图像是否陷入‘无意义的炫技’...",
-                    "正在计算 NAL 核心指标：图文/意图协同度...",
-                    "学术评审报告深度撰写中..."
-                ]
-                
+                # --- D. 轮询等待结果 ---
                 while True:
-                    # 获取数据库状态
+                    # 假设后端有一个查询状态的接口
                     status_resp = requests.get(f"{API_BASE_URL}/PB/api/status/{row_id}", timeout=10)
-                    if status_resp.status_code == 200:
+                    
+                    try:
+                        # 增加容错：防止后端返回非 JSON 格式的错误网页导致崩溃
                         data = status_resp.json()
-                        status = data.get("status")
+                    except ValueError:
+                        st.error("❌ 后端返回了无法解析的异常数据，可能网关出现了问题。")
+                        break
                         
-                        if status == "completed":
-                            progress_bar.progress(100)
-                            status_area.success("🎯 深度评审已完成！")
-                            
-                            # --- 6. 学术报告展示区 ---
+                    status = data.get("status")
+                    
+                    if status == "completed":
+                        progress_bar.progress(100)
+                        status_area.success(f"🎉 NAL 评审立项成功！档案 ID: {row_id}")
+                        
+                        report_text = data.get("v65_synergy_report", "报告提取失败。")
+                        score = data.get("score", "N/A")
+                        
+                        # 使用 st.markdown 渲染具有排版格式的学术报告 (核心改进)
+                        st.subheader("📑 V65 协同评审报告")
+                        with st.container(border=True):
+                            st.markdown(f"**综合学术评分:** `{score}`")
                             st.divider()
-                            col_score, col_report = st.columns([1, 2.5])
+                            st.markdown(report_text)
                             
-                            with col_score:
-                                score = data.get("v65_visual_score", 0)
-                                # 使用 metric 保持原貌
-                                st.metric("NAL 综合协同得分", f"{score} / 10")
-                                st.write("**4:3:3 评测维度表：**")
-                                st.caption("☑️ 视觉对撞表现")
-                                st.caption("☑️ 创意/原创维度")
-                                st.caption("☑️ 叙事平衡与意图契合")
-                                
-                            with col_report:
-                                st.markdown("### 🏛️ 学术评审报告 (Synergy Report)")
-                                # 保持原有的 info 框展示报告
-                                st.info(data.get("v65_synergy_report", "报告提取失败。"))
-                                
-                                # 新增内容：提供简单的报告下载功能 (基于文本)
-                                report_text = data.get("v65_synergy_report", "")
-                                if report_text:
-                                    st.download_button(
-                                        label="📥 下载学术评审报告",
-                                        data=f"NAL 评审报告 (ID: {row_id})\n综合得分: {score}\n\n{report_text}",
-                                        file_name=f"NAL_Report_{row_id}.txt",
-                                        mime="text/plain"
-                                    )
-                            break
-                            
-                        elif status == "failed":
-                            st.error("❌ 模型分析崩溃，请检查素材是否触碰安全限制或后端日志报错。")
-                            break
-                        else:
-                            elapsed = int(time.time() - start_time)
-                            q_idx = (elapsed // 8) % len(quotes)
-                            status_area.info(f"⏳ {quotes[q_idx]} (已耗时 {elapsed}s)")
-                            progress_bar.progress(min(elapsed * 2, 95)) 
-                            
+                        # 提供纯文本下载
+                        st.download_button(
+                            label="📥 下载学术评审报告",
+                            data=f"NAL 评审报告 (ID: {row_id})\n综合得分: {score}\n\n{report_text}",
+                            file_name=f"NAL_Report_{row_id}.txt",
+                            mime="text/plain"
+                        )
+                        break
+                        
+                    elif status == "failed":
+                        progress_bar.empty()
+                        status_area.error("❌ 模型分析崩溃，请检查素材是否触碰安全限制或后端日志报错。")
+                        break
+                        
+                    else:
+                        # 正在处理中，更新伪进度条
+                        elapsed = int(time.time() - start_time)
+                        q_idx = (elapsed // 8) % len(quotes)
+                        status_area.info(f"⏳ {quotes[q_idx]} (已耗时 {elapsed}s)")
+                        progress_bar.progress(min(elapsed * 2, 95)) 
+                        
                     time.sleep(5)
+                    
             else:
-                st.error(f"后端 API 拒绝服务 (HTTP {resp.status_code})")
-                st.write("请确认 Render 后端 pb-api.nal-ai.org 已正确配置 CORS。")
-        except Exception as e:
-            st.error(f"网络阻断，无法连接到 NAL 评审中枢: {e}")
+                st.error(f"❌ 后端 API 拒绝服务 (HTTP {resp.status_code})")
+                st.write(f"详细信息: {resp.text}")
 
-# --- 7. 页脚版权声明 ---
+        except Exception as e:
+            st.error(f"📡 网络阻断或执行异常，无法连接到 NAL 评审中枢: {str(e)}")
+
+# ==========================================
+# 6. 页脚版权声明
+# ==========================================
 st.divider()
-# 保持原有的页脚并微调呈现
 st.markdown(
     "<div style='text-align: center; color: gray; font-size: 0.8em;'>"
-    "© 2026 NewArtLiterature Collective | 倡导有灵魂的视觉叙事与数字化学术分析<br>"
-    "新艺文社数字化平台 · 非营利性学术机构"
+    "© 2026 NewArtLiterature Collective | 倡导数字时代的视觉先锋叙事"
     "</div>", 
     unsafe_allow_html=True
 )
