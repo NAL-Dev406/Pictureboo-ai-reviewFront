@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import time
 import base64
+import os
 from io import BytesIO
 from PIL import Image
 from supabase import create_client, Client
@@ -29,10 +30,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 获取环境变量 (Streamlit Cloud Secrets)
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://hwprweoyqvkwlbqffngh.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cHJ3ZW95cXZrd2xicWZmbmdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MDY5ODQsImV4cCI6MjA5MDQ4Mjk4NH0.zLr6zdJALR8p2xmjtueENFsGUtEpginY_vsYMUgM2us")
-API_BASE_URL = "https://pb-api.nal-ai.org" # 后端 API 地址
+# 获取环境变量 (替换掉 st.secrets)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://hwprweoyqvkwlbqffngh.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3cHJ3ZW95cXZrd2xicWZmbmdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MDY5ODQsImV4cCI6MjA5MDQ4Mjk4NH0.zLr6zdJALR8p2xmjtueENFsGUtEpginY_vsYMUgM2us")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://pb-api.nal-ai.org") # 同样推荐用 os.environ 包裹一下
 
 # 初始化 Supabase 客户端
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
