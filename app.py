@@ -107,16 +107,37 @@ script_text = st.text_area(
 )
 
 st.write(f"### 🖼️ 第二步：上传 {work_type} 视觉素材")
+# 更新了提示文案，并增加了 type 限制以防上传不支持的文件
 uploaded_files = st.file_uploader(
-    "支持上传 JPG, PNG 格式 (绘本建议上传连续跨页，插画建议上传高清原图)", 
-    accept_multiple_files=True
+    "支持上传 JPG, PNG 格式 (⚠️ 最多上传 5 张，单张大小不超过 1MB)", 
+    accept_multiple_files=True,
+    type=['jpg', 'jpeg', 'png']
 )
 
 if uploaded_files:
+    # 🚨 校验 1：限制最大数量为 5 张
+    if len(uploaded_files) > 5:
+        st.error(f"⚠️ 上传数量超限：您当前上传了 {len(uploaded_files)} 张图片，系统最多允许评审 5 张核心画面。请在上方点击 'X' 删减图片。")
+        st.stop() # 强制停止后续代码运行，不让用户看到提交按钮
+
+    # 🚨 校验 2：限制单张文件最大为 1MB (1MB = 1 * 1024 * 1024 Bytes)
+    MAX_SIZE_BYTES = 1 * 1024 * 1024
+    oversized_files = [file.name for file in uploaded_files if file.size > MAX_SIZE_BYTES]
+    
+    if oversized_files:
+        st.error("⚠️ 文件体积超限：系统限制单张图片最大为 1MB。以下图片过大：")
+        for name in oversized_files:
+            st.write(f"- {name}")
+        st.info("💡 架构师建议：对于 AI 视觉模型而言，适当压缩后的图片（如 800px 宽度）完全不影响叙事节奏和图文协同的分析。建议使用画图工具或在线压缩后重试。")
+        st.stop() # 强制拦截
+
+    # 如果通过了以上所有安全校验，再展示预览区
     with st.expander("👀 待评审素材预览", expanded=False):
-        cols = st.columns(4)
+        # 优化了列的分配，如果少于 4 张图就不会出现空白列
+        num_cols = min(len(uploaded_files), 4) 
+        cols = st.columns(num_cols)
         for idx, file in enumerate(uploaded_files):
-            cols[idx % 4].image(file, use_container_width=True)
+            cols[idx % num_cols].image(file, use_container_width=True)
 
 # --- 5. 提交与轮询逻辑 ---
 if st.button("🚀 提交 NAL 学术评审", type="primary"):
